@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html>
+<script src="https://cdn.jsdelivr.net/npm/obs-websocket-js"></script>
 <script>
 // Connect to the OBS WebSocket server
 var obsWebSocket = new OBSWebSocket();
@@ -39,17 +40,17 @@ obsWebSocket.getSceneList(function(err, data) {
     // Define the function to handle the data available event
     mediaRecorder.ondataavailable = function(event) {
       var reader = new FileReader();
-      reader.onload = function() {
-        var base64Data = reader.result.split(",")[1];
-        obsWebSocket.send("SetSourceSettings", {
-          "sourceName": source.name,
-          "sourceType": source.typeId,
-          "sourceSettings": {
+	reader.onload = function() {
+   	 var base64Data = reader.result;
+   	 obsWebSocket.send("SetSourceSettings", {
+        "sourceName": source.name,
+        "sourceType": source.typeId,
+        "sourceSettings": {
             "local_file": base64Data
-          }
-        });
-      }
-      reader.readAsDataURL(event.data);
+        }
+    });
+}
+reader.readAsDataURL(event.data);
     }
 
     // Start recording
@@ -76,13 +77,16 @@ obsWebSocket.getSceneList(function(err, data) {
 		};
 
 		async function startStream() {
-			try {
-				const stream = await navigator.mediaDevices.getUserMedia(constraints);
-				const video = document.querySelector('#video');
-				video.srcObject = stream;
-			} catch (e) {
-				console.error(e);
-			}
+    		try {
+        		const stream = await navigator.mediaDevices.getUserMedia(constraints);
+        		const video = document.querySelector('#video');
+        		video.srcObject = stream;
+
+       	 		const videoTrack = stream.getVideoTracks()[0];
+     	   		const videoSender = pc.addTrack(videoTrack, stream);
+ 	   	} catch (e) {
+  	      		console.error(e);
+ 	   	}
 		}
 
 		startStream();
