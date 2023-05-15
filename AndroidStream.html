@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>WebRTC Android Stream</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+  </head>
+  <body>
+    <h1>WebRTC Android Stream</h1>
+    <video id="localVideo" autoplay muted></video>
+    <script>
+      navigator.mediaDevices.getUserMedia({ video: true })
+        .then(function(stream) {
+          var video = document.getElementById('localVideo');
+          video.srcObject = stream;
+          video.onloadedmetadata = function(e) {
+            video.play();
+          };
+
+          // create a peer connection object
+          var pc = new RTCPeerConnection({
+            iceServers: [
+              {
+                urls: "stun:stun.l.google.com:19302"
+              }
+            ]
+          });
+
+          // add the video stream to the peer connection
+          stream.getTracks().forEach(function(track) {
+            pc.addTrack(track, stream);
+          });
+
+          // create an offer to start the WebRTC session
+          pc.createOffer({
+            offerToReceiveVideo: 1
+          }).then(function(offer) {
+            return pc.setLocalDescription(offer);
+          }).then(function() {
+            // send the offer to the server
+            var socket = new WebSocket("wss://136.50.167.208:4455");
+            socket.onopen = function() {
+              socket.send(JSON.stringify({
+                type: "webrtc-offer",
+                sdp: pc.localDescription.sdp
+              }));
+            };
+          });
+
+          // handle messages from the server
+          var socket = new WebSocket("wss://136.50.167.208:4455");
+          socket.onmessage = function(event) {
+            var message = JSON.parse(event.data);
+            if (message.type === "webrtc-answer") {
+              pc.setRemoteDescription(new RTCSessionDescription({
+                type: "answer",
+                sdp: message.sdp
+              }));
+            }
+          };
+        })
+        .catch(function(err) {
+          console.log(err.name + ": " + err.message);
+        });
+    </script>
+  </body>
+</html>
