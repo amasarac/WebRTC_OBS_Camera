@@ -14,7 +14,7 @@
       
       socket.onopen = () => {
         console.log('WebSocket connection established.');
-        socket.send(JSON.stringify({
+        WebSocket.send(JSON.stringify({
           "request-type": "SetPassword",
           "message-id": "SetPassword",
           "password": password
