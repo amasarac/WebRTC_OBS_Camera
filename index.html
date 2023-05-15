@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>WebRTC Test</title>
+  </head>
+  <body>
+    <video id="localVideo" autoplay></video>
+    <script>
+      navigator.mediaDevices.getUserMedia({ audio: true, video: true })
+        .then(stream => {
+          const localVideo = document.getElementById('localVideo');
+          localVideo.srcObject = stream;
+        })
+        .catch(error => {
+          console.error(error);
+        });
+    </script>
+  </body>
+</html>
