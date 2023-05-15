@@ -1,79 +1,75 @@
 <!DOCTYPE html>
 <html>
-<head>
-	<title>WebRTC Stream</title>
-	<meta charset="utf-8">
-	<meta name="viewport" content="width=device-width, initial-scale=1">
-	<style>
-		body { margin: 0; padding: 0; }
-		video { width: 100%; height: 100%; }
-	</style>
-</head>
-<body>
-	<video id="video" autoplay></video>
-	<script>
-		const constraints = {
-			audio: true,
-			video: true
-		};
+  <head>
+    <meta charset="utf-8">
+    <title>WebRTC Stream to OBS</title>
+  </head>
+  <body>
+    <video id="local-video" autoplay></video>
+    <script>
+      const socket = new WebSocket('ws://[2605:a601:a555:4500:8cbe:f0ed:b553:f34]:4455');
+      const password = '35HN14atfE9teSwR';
+      const sceneName = 'WebRTC Scene';
+      const sourceName = 'WebRTC Source';
+      
+      socket.onopen = () => {
+        console.log('WebSocket connection established.');
+        socket.send(JSON.stringify({
+          "request-type": "SetPassword",
+          "message-id": "SetPassword",
+          "password": password
+        }));
+      };
 
-		async function startStream() {
-			try {
-				const stream = await navigator.mediaDevices.getUserMedia(constraints);
-				const video = document.querySelector('#video');
-				video.srcObject = stream;
-				const websocket = new WebSocket('ws://localhost:8080');
-				websocket.onopen = function() {
-					console.log('Websocket connected.');
-					const pc = new RTCPeerConnection();
-					const videoTrack = stream.getVideoTracks()[0];
-					pc.addTrack(videoTrack, stream);
-					pc.onicecandidate = function(event) {
-						if (event.candidate) {
-							websocket.send(JSON.stringify({
-								type: 'candidate',
-								payload: event.candidate
-							}));
-						}
-					};
-					websocket.onmessage = function(event) {
-						const message = JSON.parse(event.data);
-						if (message.type === 'offer') {
-							const sdp = message.payload;
-							pc.setRemoteDescription(sdp).then(function() {
-								return pc.createAnswer();
-							}).then(function(answer) {
-								return pc.setLocalDescription(answer);
-							}).then(function() {
-								websocket.send(JSON.stringify({
-									type: 'answer',
-									payload: pc.localDescription
-								}));
-							}).catch(function(e) {
-								console.error('Failed to create answer:', e);
-							});
-						} else if (message.type === 'candidate') {
-							const candidate = new RTCIceCandidate(message.payload);
-							pc.addIceCandidate(candidate).catch(function(e) {
-								console.error('Failed to add ICE candidate:', e);
-							});
-						} else {
-							console.warn('Unknown message type:', message.type);
-						}
-					};
-				};
-				websocket.onclose = function() {
-					console.log('Websocket disconnected.');
-				};
-				websocket.onerror = function(event) {
-					console.error('Websocket error:', event);
-				};
-			} catch (e) {
-				console.error(e);
-			}
-		}
+      socket.onerror = error => {
+        console.log(`WebSocket error: ${error}`);
+      };
 
-		startStream();
-	</script>
-</body>
+      socket.onmessage = event => {
+        const data = JSON.parse(event.data);
+        if (data.type === 'hello') {
+          console.log('WebSocket connection successful.');
+          socket.send(JSON.stringify({
+            "request-type": "SetCurrentScene",
+            "message-id": "SetCurrentScene",
+            "scene-name": sceneName
+          }));
+          socket.send(JSON.stringify({
+            "request-type": "SetSourceRender",
+            "message-id": "SetSourceRender",
+            "source": sourceName,
+            "render": true
+          }));
+        }
+      };
+
+      function startLocalVideo() {
+        const video = document.getElementById('local-video');
+        navigator.mediaDevices.getUserMedia({ video: true })
+          .then(stream => {
+            video.srcObject = stream;
+            console.log('Local video stream started.');
+            socket.send(JSON.stringify({
+              "request-type": "StartStreaming",
+              "message-id": "StartStreaming"
+            }));
+          })
+          .catch(error => {
+            console.log(`Error starting local video stream: ${error}`);
+          });
+      }
+
+      function stopLocalVideo() {
+        const video = document.getElementById('local-video');
+        video.srcObject = null;
+        console.log('Local video stream stopped.');
+        socket.send(JSON.stringify({
+          "request-type": "StopStreaming",
+          "message-id": "StopStreaming"
+        }));
+      }
+
+      startLocalVideo();
+    </script>
+  </body>
 </html>
