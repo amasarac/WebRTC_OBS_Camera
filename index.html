@@ -1,64 +1,5 @@
 <!DOCTYPE html>
 <html>
-<script src="https://cdn.jsdelivr.net/npm/obs-websocket-js"></script>
-<script>
-// Connect to the OBS WebSocket server
-var obsWebSocket = new OBSWebSocket();
-obsWebSocket.connect("ws://2605:a601:a555:4500:8cbe:f0ed:b553:f34:4455", "35HN14atfE9teSwR");
-
-// Define the scene and source to send the video stream to
-var sceneName = "WebRTC Scene";
-var sourceName = "WebRTC Source";
-
-// Get the scene and source objects from OBS
-obsWebSocket.getSceneList(function(err, data) {
-  if (err) {
-    console.error(err);
-    return;
-  }
-  var scene = data.scenes.find(scene => scene.name === sceneName);
-  if (!scene) {
-    console.error(`Scene "${sceneName}" not found`);
-    return;
-  }
-  obsWebSocket.getSceneItemProperties({ "scene-name": scene.name, item: sourceName }, function(err, data) {
-    if (err) {
-      console.error(err);
-      return;
-    }
-    var source = data;
-  
-    // Define the video element to capture
-    var videoElement = document.getElementById("video-element");
-
-    // Create a MediaStream object from the video element
-    var mediaStream = videoElement.captureStream();
-
-    // Create a new MediaRecorder object
-    var mediaRecorder = new MediaRecorder(mediaStream);
-
-    // Define the function to handle the data available event
-    mediaRecorder.ondataavailable = function(event) {
-      var reader = new FileReader();
-	reader.onload = function() {
-   	 var base64Data = reader.result;
-   	 obsWebSocket.send("SetSourceSettings", {
-        "sourceName": source.name,
-        "sourceType": source.typeId,
-        "sourceSettings": {
-            "local_file": base64Data
-        }
-    });
-}
-reader.readAsDataURL(event.data);
-    }
-
-    // Start recording
-    mediaRecorder.start();
-  });
-});
-
-</script>
 <head>
 	<title>WebRTC Stream</title>
 	<meta charset="utf-8">
@@ -77,79 +18,62 @@ reader.readAsDataURL(event.data);
 		};
 
 		async function startStream() {
-    		try {
-        		const stream = await navigator.mediaDevices.getUserMedia(constraints);
-        		const video = document.querySelector('#video');
-        		video.srcObject = stream;
-
-       	 		const videoTrack = stream.getVideoTracks()[0];
-     	   		const videoSender = pc.addTrack(videoTrack, stream);
- 	   	} catch (e) {
-  	      		console.error(e);
- 	   	}
+			try {
+				const stream = await navigator.mediaDevices.getUserMedia(constraints);
+				const video = document.querySelector('#video');
+				video.srcObject = stream;
+				const websocket = new WebSocket('ws://localhost:8080');
+				websocket.onopen = function() {
+					console.log('Websocket connected.');
+					const pc = new RTCPeerConnection();
+					const videoTrack = stream.getVideoTracks()[0];
+					pc.addTrack(videoTrack, stream);
+					pc.onicecandidate = function(event) {
+						if (event.candidate) {
+							websocket.send(JSON.stringify({
+								type: 'candidate',
+								payload: event.candidate
+							}));
+						}
+					};
+					websocket.onmessage = function(event) {
+						const message = JSON.parse(event.data);
+						if (message.type === 'offer') {
+							const sdp = message.payload;
+							pc.setRemoteDescription(sdp).then(function() {
+								return pc.createAnswer();
+							}).then(function(answer) {
+								return pc.setLocalDescription(answer);
+							}).then(function() {
+								websocket.send(JSON.stringify({
+									type: 'answer',
+									payload: pc.localDescription
+								}));
+							}).catch(function(e) {
+								console.error('Failed to create answer:', e);
+							});
+						} else if (message.type === 'candidate') {
+							const candidate = new RTCIceCandidate(message.payload);
+							pc.addIceCandidate(candidate).catch(function(e) {
+								console.error('Failed to add ICE candidate:', e);
+							});
+						} else {
+							console.warn('Unknown message type:', message.type);
+						}
+					};
+				};
+				websocket.onclose = function() {
+					console.log('Websocket disconnected.');
+				};
+				websocket.onerror = function(event) {
+					console.error('Websocket error:', event);
+				};
+			} catch (e) {
+				console.error(e);
+			}
 		}
 
 		startStream();
-		
-		const websocket = new WebSocket('ws://2605:a601:a555:4500:8cbe:f0ed:b553:f34:4455');
-		websocket.onopen = function() {
-			console.log('Websocket connected.');
-		};
-		websocket.onclose = function() {
-			console.log('Websocket disconnected.');
-		};
-		websocket.onerror = function(event) {
-			console.error('Websocket error:', event);
-		};
-		
-		const videoTrack = document.querySelector('#video').srcObject.getVideoTracks()[0];
-		const videoSender = pc.addTrack(videoTrack, stream);
-		
-		const config = {
-			iceServers: [
-				{urls: 'stun:stun.l.google.com:19302'},
-				{urls: 'stun:stun1.l.google.com:19302'},
-				{urls: 'stun:stun2.l.google.com:19302'},
-				{urls: 'stun:stun3.l.google.com:19302'},
-				{urls: 'stun:stun4.l.google.com:19302'}
-			]
-		};
-		
-		const pc = new RTCPeerConnection(config);
-		pc.addTransceiver('video', {direction: 'sendonly'});
-		pc.onicecandidate = function(event) {
-			if (event.candidate) {
-				websocket.send(JSON.stringify({
-					type: 'candidate',
-					payload: event.candidate
-				}));
-			}
-		};
-		websocket.onmessage = function(event) {
-			const message = JSON.parse(event.data);
-			if (message.type === 'offer') {
-				const sdp = message.payload;
-				pc.setRemoteDescription(sdp).then(function() {
-					return pc.createAnswer();
-				}).then(function(answer) {
-					return pc.setLocalDescription(answer);
-				}).then(function() {
-					websocket.send(JSON.stringify({
-						type: 'answer',
-						payload: pc.localDescription
-					}));
-				}).catch(function(e) {
-					console.error('Failed to create answer:', e);
-				});
-			} else if (message.type === 'candidate') {
-				const candidate = new RTCIceCandidate(message.payload);
-				pc.addIceCandidate(candidate).catch(function(e) {
-					console.error('Failed to add ICE candidate:', e);
-				});
-			} else {
-				console.warn('Unknown message type:', message.type);
-			}
-		};
 	</script>
 </body>
 </html>
