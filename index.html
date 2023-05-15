@@ -1,19 +1,46 @@
 <!DOCTYPE html>
 <html>
-  <head>
-    <title>WebRTC Test</title>
-  </head>
-  <body>
-    <video id="localVideo" autoplay></video>
-    <script>
-      navigator.mediaDevices.getUserMedia({ audio: true, video: true })
-        .then(stream => {
-          const localVideo = document.getElementById('localVideo');
-          localVideo.srcObject = stream;
-        })
-        .catch(error => {
-          console.error(error);
-        });
-    </script>
-  </body>
+<head>
+  <title>WebRTC to OBS Studio Streamer</title>
+  <script src="https://simplewebrtc.com/latest-v3.js"></script>
+</head>
+<body>
+  <h1>WebRTC OBS CAMERA</h1>
+  <video id="localVideo" autoplay muted></video>
+
+  <script>
+    const webrtc = new SimpleWebRTC({
+      localVideoEl: 'localVideo',
+      autoRequestMedia: true,
+    });
+
+    webrtc.createRoom('my-room-name', (err, roomId) => {
+      if (err) {
+        console.error(err);
+        return;
+      }
+      console.log(`Room created with ID: ${roomId}`);
+    });
+
+    webrtc.on('readyToCall', () => {
+      webrtc.joinRoom('my-room-name');
+    });
+
+    webrtc.on('videoAdded', (video, peer) => {
+      const sourceUrl = URL.createObjectURL(video.stream);
+      const source = document.createElement('source');
+      source.src = sourceUrl;
+      const videoElement = document.createElement('video');
+      videoElement.setAttribute('autoplay', '');
+      videoElement.appendChild(source);
+
+      const div = document.createElement('div');
+      div.appendChild(videoElement);
+
+      const browserSource = window.obsstudio.Browser.create(div.outerHTML);
+      browserSource.setDimensions(video.videoWidth, video.videoHeight);
+      browserSource.setVisible(true);
+    });
+  </script>
+</body>
 </html>
