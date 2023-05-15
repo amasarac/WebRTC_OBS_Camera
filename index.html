@@ -1,5 +1,63 @@
 <!DOCTYPE html>
 <html>
+<script>
+// Connect to the OBS WebSocket server
+var obsWebSocket = new OBSWebSocket();
+obsWebSocket.connect("ws://2605:a601:a555:4500:8cbe:f0ed:b553:f34:4455", "35HN14atfE9teSwR");
+
+// Define the scene and source to send the video stream to
+var sceneName = "WebRTC Scene";
+var sourceName = "WebRTC Source";
+
+// Get the scene and source objects from OBS
+obsWebSocket.getSceneList(function(err, data) {
+  if (err) {
+    console.error(err);
+    return;
+  }
+  var scene = data.scenes.find(scene => scene.name === sceneName);
+  if (!scene) {
+    console.error(`Scene "${sceneName}" not found`);
+    return;
+  }
+  obsWebSocket.getSceneItemProperties({ "scene-name": scene.name, item: sourceName }, function(err, data) {
+    if (err) {
+      console.error(err);
+      return;
+    }
+    var source = data;
+  
+    // Define the video element to capture
+    var videoElement = document.getElementById("video-element");
+
+    // Create a MediaStream object from the video element
+    var mediaStream = videoElement.captureStream();
+
+    // Create a new MediaRecorder object
+    var mediaRecorder = new MediaRecorder(mediaStream);
+
+    // Define the function to handle the data available event
+    mediaRecorder.ondataavailable = function(event) {
+      var reader = new FileReader();
+      reader.onload = function() {
+        var base64Data = reader.result.split(",")[1];
+        obsWebSocket.send("SetSourceSettings", {
+          "sourceName": source.name,
+          "sourceType": source.typeId,
+          "sourceSettings": {
+            "local_file": base64Data
+          }
+        });
+      }
+      reader.readAsDataURL(event.data);
+    }
+
+    // Start recording
+    mediaRecorder.start();
+  });
+});
+
+</script>
 <head>
 	<title>WebRTC Stream</title>
 	<meta charset="utf-8">
