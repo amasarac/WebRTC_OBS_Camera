@@ -1,66 +1,105 @@
 <!DOCTYPE html>
 <html>
-  <head>
-    <title>WebRTC Android Stream</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-  </head>
-  <body>
-    <h1>WebRTC Android Stream</h1>
-    <video id="localVideo" autoplay muted></video>
+<head>
+    <title>WebRTC Android</title>
     <script>
-      navigator.mediaDevices.getUserMedia({ video: true })
-        .then(function(stream) {
-          var video = document.getElementById('localVideo');
-          video.srcObject = stream;
-          video.onloadedmetadata = function(e) {
-            video.play();
-          };
+        // Check browser compatibility for WebRTC
+        if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+            navigator.mediaDevices.getUserMedia({ video: true, audio: true })
+                .then(function(stream) {
+                    // Media capture success
+                    handleMediaStream(stream);
+                })
+                .catch(function(error) {
+                    // Media capture error
+                    console.error('Error accessing media devices:', error);
+                });
+        } else {
+            console.error('WebRTC is not supported in this browser.');
+        }
 
-          // create a peer connection object
-          var pc = new RTCPeerConnection({
-            iceServers: [
-              {
-                urls: "stun:stun.l.google.com:19302"
-              }
-            ]
-          });
+        function handleMediaStream(stream) {
+            // Create RTCPeerConnection
+            var configuration = { iceServers: [{ urls: 'stun:stun.example.com' }] };
+            var pc = new RTCPeerConnection(configuration);
 
-          // add the video stream to the peer connection
-          stream.getTracks().forEach(function(track) {
-            pc.addTrack(track, stream);
-          });
+            // Add media tracks to the connection
+            stream.getTracks().forEach(function(track) {
+                pc.addTrack(track, stream);
+            });
 
-          // create an offer to start the WebRTC session
-          pc.createOffer({
-            offerToReceiveVideo: 1
-          }).then(function(offer) {
-            return pc.setLocalDescription(offer);
-          }).then(function() {
-            // send the offer to the server
-            var socket = new WebSocket("wss://136.50.167.208:4455");
-            socket.onopen = function() {
-              socket.send(JSON.stringify({
-                type: "webrtc-offer",
-                sdp: pc.localDescription.sdp
-              }));
-            };
-          });
+            // Create offer and set local description
+            pc.createOffer()
+                .then(function(offer) {
+                    return pc.setLocalDescription(offer);
+                })
+                .then(function() {
+                    // Send the offer to the signaling server
+                    var offer = pc.localDescription;
+                    sendOfferToSignalingServer(offer);
+                })
+                .catch(function(error) {
+                    console.error('Error creating offer:', error);
+                });
 
-          // handle messages from the server
-          var socket = new WebSocket("wss://136.50.167.208:4455");
-          socket.onmessage = function(event) {
-            var message = JSON.parse(event.data);
-            if (message.type === "webrtc-answer") {
-              pc.setRemoteDescription(new RTCSessionDescription({
-                type: "answer",
-                sdp: message.sdp
-              }));
+            // Handle incoming answer from the signaling server
+            function handleAnswer(answer) {
+                pc.setRemoteDescription(answer)
+                    .then(function() {
+                        console.log('Remote description set successfully.');
+                    })
+                    .catch(function(error) {
+                        console.error('Error setting remote description:', error);
+                    });
             }
-          };
-        })
-        .catch(function(err) {
-          console.log(err.name + ": " + err.message);
-        });
+
+            // Function to send the offer to the signaling server
+            function sendOfferToSignalingServer(offer) {
+                // Implement your logic to send the offer to the signaling server
+                // Use AJAX, WebSocket, or any other communication method
+                // Include any necessary authentication or headers
+
+                // Example using fetch API
+                fetch('https://signaling.example.com/offers', {
+                    method: 'POST',
+                    body: JSON.stringify(offer),
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                })
+                .then(function(response) {
+                    // Handle response from the server
+                    if (response.ok) {
+                        console.log('Offer sent successfully.');
+                    } else {
+                        console.error('Error sending offer:', response.status);
+                    }
+                })
+                .catch(function(error) {
+                    console.error('Error sending offer:', error);
+                });
+            }
+
+            // Event handler for renegotiation
+            pc.onnegotiationneeded = function() {
+                pc.createOffer()
+                    .then(function(offer) {
+                        // Set the offer as the pending local description
+                        return pc.setLocalDescription(offer);
+                    })
+                    .then(function() {
+                        // Send the updated offer to the signaling server
+                        var offer = pc.localDescription;
+                        sendOfferToSignalingServer(offer);
+                    })
+                    .catch(function(error) {
+                        console.error('Error creating offer for renegotiation:', error);
+                    });
+            };
+        }
     </script>
-  </body>
+</head>
+<body>
+    <!-- Add any necessary UI elements or controls -->
+</body>
 </html>
