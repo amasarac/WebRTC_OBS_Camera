@@ -1,46 +1,93 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>WebRTC to OBS Studio Streamer</title>
-  <script src="https://simplewebrtc.com/latest-v3.js"></script>
+	<title>WebRTC Stream</title>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<style>
+		body { margin: 0; padding: 0; }
+		video { width: 100%; height: 100%; }
+	</style>
 </head>
 <body>
-  <h1>WebRTC OBS CAMERA</h1>
-  <video id="localVideo" autoplay muted></video>
+	<video id="video" autoplay></video>
+	<script>
+		const constraints = {
+			audio: true,
+			video: true
+		};
 
-  <script>
-    const webrtc = new SimpleWebRTC({
-      localVideoEl: 'localVideo',
-      autoRequestMedia: true,
-    });
+		async function startStream() {
+			try {
+				const stream = await navigator.mediaDevices.getUserMedia(constraints);
+				const video = document.querySelector('#video');
+				video.srcObject = stream;
+			} catch (e) {
+				console.error(e);
+			}
+		}
 
-    webrtc.createRoom('my-room-name', (err, roomId) => {
-      if (err) {
-        console.error(err);
-        return;
-      }
-      console.log(`Room created with ID: ${roomId}`);
-    });
-
-    webrtc.on('readyToCall', () => {
-      webrtc.joinRoom('my-room-name');
-    });
-
-    webrtc.on('videoAdded', (video, peer) => {
-      const sourceUrl = URL.createObjectURL(video.stream);
-      const source = document.createElement('source');
-      source.src = sourceUrl;
-      const videoElement = document.createElement('video');
-      videoElement.setAttribute('autoplay', '');
-      videoElement.appendChild(source);
-
-      const div = document.createElement('div');
-      div.appendChild(videoElement);
-
-      const browserSource = window.obsstudio.Browser.create(div.outerHTML);
-      browserSource.setDimensions(video.videoWidth, video.videoHeight);
-      browserSource.setVisible(true);
-    });
-  </script>
+		startStream();
+		
+		const websocket = new WebSocket('ws://2605:a601:a555:4500:8cbe:f0ed:b553:f34:4455');
+		websocket.onopen = function() {
+			console.log('Websocket connected.');
+		};
+		websocket.onclose = function() {
+			console.log('Websocket disconnected.');
+		};
+		websocket.onerror = function(event) {
+			console.error('Websocket error:', event);
+		};
+		
+		const videoTrack = document.querySelector('#video').srcObject.getVideoTracks()[0];
+		const videoSender = pc.addTrack(videoTrack, stream);
+		
+		const config = {
+			iceServers: [
+				{urls: 'stun:stun.l.google.com:19302'},
+				{urls: 'stun:stun1.l.google.com:19302'},
+				{urls: 'stun:stun2.l.google.com:19302'},
+				{urls: 'stun:stun3.l.google.com:19302'},
+				{urls: 'stun:stun4.l.google.com:19302'}
+			]
+		};
+		
+		const pc = new RTCPeerConnection(config);
+		pc.addTransceiver('video', {direction: 'sendonly'});
+		pc.onicecandidate = function(event) {
+			if (event.candidate) {
+				websocket.send(JSON.stringify({
+					type: 'candidate',
+					payload: event.candidate
+				}));
+			}
+		};
+		websocket.onmessage = function(event) {
+			const message = JSON.parse(event.data);
+			if (message.type === 'offer') {
+				const sdp = message.payload;
+				pc.setRemoteDescription(sdp).then(function() {
+					return pc.createAnswer();
+				}).then(function(answer) {
+					return pc.setLocalDescription(answer);
+				}).then(function() {
+					websocket.send(JSON.stringify({
+						type: 'answer',
+						payload: pc.localDescription
+					}));
+				}).catch(function(e) {
+					console.error('Failed to create answer:', e);
+				});
+			} else if (message.type === 'candidate') {
+				const candidate = new RTCIceCandidate(message.payload);
+				pc.addIceCandidate(candidate).catch(function(e) {
+					console.error('Failed to add ICE candidate:', e);
+				});
+			} else {
+				console.warn('Unknown message type:', message.type);
+			}
+		};
+	</script>
 </body>
 </html>
